@@ -33,23 +33,12 @@
       - curl
       - ca-certificates
 
-  # - gnupg2
-
-  # - name: Install helper packages for Kubernetes
-  #   shell: |
-  #     curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
-  #     echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-
-  # curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-  # echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
-
   - name: update apt-get and install kube packages
     shell: |
       curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - && \
       echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list && \
       apt-get update -q && \
       apt-get install -qy kubelet=1.19.0-00 kubectl=1.19.0-00 kubeadm=1.19.0-00 docker.io
-  # apt-get install -qy kubelet=1.18.0-00 kubectl=1.18.0-00 kubeadm=1.18.0-00 docker.io
 
   - name: Add ubuntu to docker group
     user:
@@ -68,31 +57,35 @@
       daemon_reload: yes
       state: restarted
 
-- hosts: role_master
-  # become: true
-  tasks:
-  - name: Display master host private ip
-    debug:
-      msg: "{{  hostvars[groups['role_master'][0]]['ansible_eth0']['ipv4']['address'] }}" 
-      # msg: "{{  hostvars[inventory_hostname]['groups']['role_master'][0] }}" 
-      # msg: "{{  hostvars[inventory_hostname]['public_ip_address'] }}"  #['ansible_default_ipv4']['address']
 
+- hosts: role_master
+  tasks:
+      
   - name: pull kubernetes images before installation
     become: yes
     shell: kubeadm config images pull
 
-  # - name: copy the configuration
-  #   become: yes
-  #   copy: 
-  #     src: ./clusterconfig.yml
-  #     dest: /home/ubuntu/
+  - name: copy the configuration
+    become: yes
+    copy: 
+      src: ./clusterconfig-base.yml
+      dest: /home/ubuntu/
+  
+  - name: get gettext-base
+    apt:
+      package: gettext-base
+      state: present
 
-  - name: Initialize the Kubernetes cluster using kubeadm
+  - name: change controlplane_endpoint and produce the clusterconfig.yml file
+    shell: |
+      export CONTROLPLANE_ENDPOINT={{ hostvars[inventory_hostname]['private_ip_address'] }}
+      envsubst < /home/ubuntu/clusterconfig-base.yml > /home/ubuntu/clusterconfig.yml
+
+  - name: initialize the Kubernetes cluster using kubeadm
     become: true
-    shell: "kubeadm init --apiserver-advertise-address={{ hostvars[groups['role_master'][0]]['ansible_eth0']['ipv4']['address'] }} --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=NumCPU,Mem" 
-    #"All" can also be used.. 
-    # shell: "kubeadm init --v=5 --apiserver-advertise-address={{ hostvars[inventory_hostname]['private_ip_address'] }} --pod-network-cidr=192.168.0.0/16 --ignore-preflight-errors=NumCPU,Mem"
-    # shell: "kubeadm init --v=5 --apiserver-advertise-address={{ hostvars[inventory_hostname]['groups']['role_master'][0] }} --pod-network-cidr=192.168.0.0/16 --ignore-preflight-errors=NumCPU,Mem"
+    shell: |
+      kubeadm init --config /home/ubuntu/clusterconfig.yml
+    # "kubeadm init --apiserver-advertise-address={{ hostvars[groups['role_master'][0]]['ansible_eth0']['ipv4']['address'] }} --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=NumCPU,Mem" #"All" can also be used.. 
     
   - name: Setup kubeconfig for ubuntu user
     become: true
@@ -102,17 +95,8 @@
      - cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
      - chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
-  # - name: Install cillium pod network
-  #   shell: export CILIUM_NAMESPACE=kube-system && kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v1.9/install/kubernetes/quick-install.yaml
-
   - name: Install flannel pod network
     shell: kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
-
-  # - name: Install calico pod network
-  #   shell: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
-  
-  # - name: Install weave pod network
-  #   shell: kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
 
   - name: Generate join command
     become: true
@@ -122,9 +106,11 @@
   - name: Copy join command to local file
     local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="/Users/home/join-command"
 
+
 - hosts: role_worker
   become: true
   tasks:
+  
   - name: Copy the join command to server location
     copy: 
       src: /Users/home/join-command 
@@ -134,11 +120,11 @@
   - name: Join the node to cluster
     command: sh /tmp/join-command.sh
 
-  - name: if cloud provider doesn't exist, put it into the file
-    lineinfile:
-      path: /var/lib/kubelet/kubeadm-flags.env
-      regexp: 'KUBELET_KUBEADM_ARGS'
-      line: KUBELET_KUBEADM_ARGS="--network-plugin=cni --cloud-provider=external --pod-infra-container-image=k8s.gcr.io/pause:3.4.1" # --provider-id=aws
+  # - name: if cloud provider doesn't exist, put it into the file
+  #   lineinfile:
+  #     path: /var/lib/kubelet/kubeadm-flags.env
+  #     regexp: 'KUBELET_KUBEADM_ARGS'
+  #     line: KUBELET_KUBEADM_ARGS="--network-plugin=cni --cloud-provider=external --pod-infra-container-image=k8s.gcr.io/pause:3.4.1" # --provider-id=aws
 
   - name: Restart kubelet
     service:
@@ -146,58 +132,24 @@
       daemon_reload: yes
       state: restarted
 
-- hosts: role_master
-  become: true
-  tasks:
-  - name: move kube-controller-manager
-    shell: mv /etc/kubernetes/manifests/kube-controller-manager.yaml /etc/kubernetes/
 
-  - name: check if the file has cloud-provider=external
-    shell: grep "--cloud-provider=external" /etc/kubernetes/kube-controller-manager.yaml || echo ""
-    register: presence
-
-  - name: if cloud provider doesn't exist, put it into the file
-    lineinfile:
-      path: /etc/kubernetes/kube-controller-manager.yaml
-      regexp: '- kube-controller-manager'
-      line: "    - kube-controller-manager\n    - --cloud-provider=external"
-    when: presence.stdout == ''
-
-  - name: move kube-controller-manager again
-    shell: mv /etc/kubernetes/kube-controller-manager.yaml /etc/kubernetes/manifests/
-
-  - name: move kube-apiserver
-    shell: mv /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/
-
-  - name: check if the file has --cloud-provider=external
-    shell: grep "--cloud-provider=external" /etc/kubernetes/kube-apiserver.yaml || echo ""
-    register: presenceInKAS
-
-  - name: if cloud provider doesn't exist, put it into the file
-    lineinfile:
-      path: /etc/kubernetes/kube-apiserver.yaml
-      regexp: '- kube-apiserver'
-      line: "    - kube-apiserver\n    - --cloud-provider=external"
-    when: presenceInKAS.stdout == ''
-
-  - name: move kube-apiserver again
-    shell: mv /etc/kubernetes/kube-apiserver.yaml /etc/kubernetes/manifests/
-
-  - name: if cloud provider doesn't exist, put it into the file
-    lineinfile:
-      path: /var/lib/kubelet/kubeadm-flags.env
-      regexp: 'KUBELET_KUBEADM_ARGS'
-      line: KUBELET_KUBEADM_ARGS="--network-plugin=cni --cloud-provider=external --pod-infra-container-image=k8s.gcr.io/pause:3.4.1" # --provider-id=aws 
-
-  - name: Restart kubelet
-    service:
-      name: kubelet
-      daemon_reload: yes
-      state: restarted
- 
 - hosts: role_master
   become: false
   tasks:
+
+  - name: Patch the instances
+    become: false
+    shell: |
+      cd /home/ubuntu      
+      kubectl patch node {{ hostvars[groups['role_master'][0]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_master'][0]]['instance_id'] }}" }}'
+      kubectl patch node {{ hostvars[groups['role_worker'][0]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_worker'][0]]['instance_id'] }}" }}'
+      kubectl patch node {{ hostvars[groups['role_worker'][1]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_worker'][1]]['instance_id'] }}" }}'
+          
+  - name: Deploy AWS CSI Driver
+    become: false
+    shell: |
+      kubectl apply -k "github.com/kubernetes-sigs/aws-ebs-csi-driver/deploy/kubernetes/overlays/stable/?ref=release-0.10"
+          
   - name: Deploy the required RBAC and the cloud-controller-manager 
     shell: |
       cd /home/ubuntu
@@ -214,6 +166,16 @@
 
 
 # ----------------------------------- "-"-"-"-"-"-"-"-"-"-"-"-"-"-"-"-"-"-"-" -----------------------------------------
+
+  # - name: Install calico pod network
+  #   shell: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+  
+  # - name: Install weave pod network
+  #   shell: kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+
+  # - name: Install cillium pod network
+  #   shell: export CILIUM_NAMESPACE=kube-system && kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v1.9/install/kubernetes/quick-install.yaml
+
 
   # - name: Add an apt signing key for Docker
   #   apt_key:
@@ -279,3 +241,52 @@
   #       - kubelet 
   #       - kubeadm 
   #       - kubectl
+
+  # - hosts: role_master
+  #   become: true
+  #   tasks:
+  #   - name: move kube-controller-manager
+  #     shell: mv /etc/kubernetes/manifests/kube-controller-manager.yaml /etc/kubernetes/
+
+  #   - name: check if the file has cloud-provider=external
+  #     shell: grep "--cloud-provider=external" /etc/kubernetes/kube-controller-manager.yaml || echo ""
+  #     register: presence
+
+  #   - name: if cloud provider doesn't exist, put it into the file
+  #     lineinfile:
+  #       path: /etc/kubernetes/kube-controller-manager.yaml
+  #       regexp: '- kube-controller-manager'
+  #       line: "    - kube-controller-manager\n    - --cloud-provider=external"
+  #     when: presence.stdout == ''
+
+  #   - name: move kube-controller-manager again
+  #     shell: mv /etc/kubernetes/kube-controller-manager.yaml /etc/kubernetes/manifests/
+
+  #   - name: move kube-apiserver
+  #     shell: mv /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/
+
+  #   - name: check if the file has --cloud-provider=external
+  #     shell: grep "--cloud-provider=external" /etc/kubernetes/kube-apiserver.yaml || echo ""
+  #     register: presenceInKAS
+
+  #   - name: if cloud provider doesn't exist, put it into the file
+  #     lineinfile:
+  #       path: /etc/kubernetes/kube-apiserver.yaml
+  #       regexp: '- kube-apiserver'
+  #       line: "    - kube-apiserver\n    - --cloud-provider=external"
+  #     when: presenceInKAS.stdout == ''
+
+  #   - name: move kube-apiserver again
+  #     shell: mv /etc/kubernetes/kube-apiserver.yaml /etc/kubernetes/manifests/
+
+  #   - name: if cloud provider doesn't exist, put it into the file
+  #     lineinfile:
+  #       path: /var/lib/kubelet/kubeadm-flags.env
+  #       regexp: 'KUBELET_KUBEADM_ARGS'
+  #       line: KUBELET_KUBEADM_ARGS="--network-plugin=cni --cloud-provider=external --pod-infra-container-image=k8s.gcr.io/pause:3.4.1" # --provider-id=aws 
+
+  #   - name: Restart kubelet
+  #     service:
+  #       name: kubelet
+  #       daemon_reload: yes
+  #       state: restarted
