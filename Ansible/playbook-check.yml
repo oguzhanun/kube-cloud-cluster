@@ -1,0 +1,18 @@
+- hosts: role_master
+  tasks:
+  # - name: Display master host private ip
+  #   debug:
+  #     msg: "{{  hostvars[groups['role_master'][0]]['ansible_eth0']['ipv4']['address'] }}" 
+
+  # - name: pull kubernetes images before installation
+  #   become: yes
+  #   shell: kubeadm config images pull
+
+  - name: Initialize the Kubernetes cluster using kubeadm
+    become: true
+    shell: kubeadm config print init-defaults > /home/ubuntu/config.yaml
+
+  - name: Copy join command to local file
+    fetch: 
+      src: /home/ubuntu/config.yaml
+      dest: /Users/home/cluster-config.yaml
