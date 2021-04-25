@@ -72,6 +72,7 @@
       dest: /home/ubuntu/
   
   - name: get gettext-base
+    become: true
     apt:
       package: gettext-base
       state: present
@@ -95,8 +96,11 @@
      - cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
      - chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
-  - name: Install flannel pod network
-    shell: kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
+  # - name: Install flannel pod network
+  #   shell: kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
+
+  - name: Install calico pod network
+    shell: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml  
 
   - name: Generate join command
     become: true
@@ -187,38 +191,6 @@
   #     repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable
   #     state: present
 
-  # - name: Install docker and its dependecies
-  #   apt: 
-  #     name: "{{ packages }}"
-  #     state: present
-  #     update_cache: yes
-  #   vars:
-  #     packages:
-  #     - docker-ce 
-  #     - docker-ce-cli 
-  #     - containerd.io
-  #   # notify:
-  #   #   - docker status
-  
-  # - name: docker status
-  #   service:
-  #     name: docker
-  #     state: started
-
-
-  # - name: Remove swapfile from /etc/fstab
-  #   mount:
-  #     name: "{{ item }}"
-  #     fstype: swap
-  #     state: absent
-  #   with_items:
-  #     - swap
-  #     - none
-
-  # - name: Disable swap
-  #   command: swapoff -a
-  #   when: ansible_swaptotal_mb > 0
-
   # - name: Add an apt signing key for Kubernetes
   #   apt_key:
   #     url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
@@ -231,62 +203,3 @@
   #     filename: kubernetes.list
 
 
-  # - name: Install Kubernetes binaries
-  #   apt: 
-  #     name: "{{ packages }}"
-  #     state: present
-  #     update_cache: yes
-  #   vars:
-  #     packages:
-  #       - kubelet 
-  #       - kubeadm 
-  #       - kubectl
-
-  # - hosts: role_master
-  #   become: true
-  #   tasks:
-  #   - name: move kube-controller-manager
-  #     shell: mv /etc/kubernetes/manifests/kube-controller-manager.yaml /etc/kubernetes/
-
-  #   - name: check if the file has cloud-provider=external
-  #     shell: grep "--cloud-provider=external" /etc/kubernetes/kube-controller-manager.yaml || echo ""
-  #     register: presence
-
-  #   - name: if cloud provider doesn't exist, put it into the file
-  #     lineinfile:
-  #       path: /etc/kubernetes/kube-controller-manager.yaml
-  #       regexp: '- kube-controller-manager'
-  #       line: "    - kube-controller-manager\n    - --cloud-provider=external"
-  #     when: presence.stdout == ''
-
-  #   - name: move kube-controller-manager again
-  #     shell: mv /etc/kubernetes/kube-controller-manager.yaml /etc/kubernetes/manifests/
-
-  #   - name: move kube-apiserver
-  #     shell: mv /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/
-
-  #   - name: check if the file has --cloud-provider=external
-  #     shell: grep "--cloud-provider=external" /etc/kubernetes/kube-apiserver.yaml || echo ""
-  #     register: presenceInKAS
-
-  #   - name: if cloud provider doesn't exist, put it into the file
-  #     lineinfile:
-  #       path: /etc/kubernetes/kube-apiserver.yaml
-  #       regexp: '- kube-apiserver'
-  #       line: "    - kube-apiserver\n    - --cloud-provider=external"
-  #     when: presenceInKAS.stdout == ''
-
-  #   - name: move kube-apiserver again
-  #     shell: mv /etc/kubernetes/kube-apiserver.yaml /etc/kubernetes/manifests/
-
-  #   - name: if cloud provider doesn't exist, put it into the file
-  #     lineinfile:
-  #       path: /var/lib/kubelet/kubeadm-flags.env
-  #       regexp: 'KUBELET_KUBEADM_ARGS'
-  #       line: KUBELET_KUBEADM_ARGS="--network-plugin=cni --cloud-provider=external --pod-infra-container-image=k8s.gcr.io/pause:3.4.1" # --provider-id=aws 
-
-  #   - name: Restart kubelet
-  #     service:
-  #       name: kubelet
-  #       daemon_reload: yes
-  #       state: restarted
