@@ -3,8 +3,8 @@
   become: true
   tasks:
 
-  - name: change hostnames
-    shell: "hostnamectl set-hostname {{ hostvars[inventory_hostname]['private_dns_name'] }}"
+  # - name: change hostnames
+  #   shell: "hostnamectl set-hostname {{ hostvars[inventory_hostname]['private_dns_name'] }}"
 
   - name: swap off
     shell: |
@@ -127,19 +127,36 @@
       daemon_reload: yes
       state: restarted
 
+- hosts: role_worker
+  tasks:
+  - name: add worker1's hostname
+    add_host:
+      name: "workers"
+      worker1: "{{ hostvars[groups['role_worker'][0]].ansible_hostname }}"
+      worker2: "{{ hostvars[groups['role_worker'][1]].ansible_hostname }}"
+      
 
 - hosts: role_master
   become: false
+  vars:
+    patchvar:
+    - "{{ hostvars[groups['role_master'][0]].ansible_hostname }}"
+    - "{{ hostvars['workers']['worker1'] }}"
+    - "{{ hostvars['workers']['worker2'] }}"
   tasks:
 
   - name: Patch the instances
     become: false
-    shell: |
-      cd /home/ubuntu      
-      kubectl patch node {{ hostvars[groups['role_master'][0]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_master'][0]]['instance_id'] }}" }}'
-      kubectl patch node {{ hostvars[groups['role_worker'][0]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_worker'][0]]['instance_id'] }}" }}'
-      kubectl patch node {{ hostvars[groups['role_worker'][1]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_worker'][1]]['instance_id'] }}" }}'
-          
+    shell: "{{ item }}"
+    with_items:
+    - cd /home/ubuntu
+    - kubectl patch node '{{ patchvar[0] }}' -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_master'][0]]['instance_id'] }}" }}'
+    - kubectl patch node '{{ patchvar[1] }}' -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_worker'][0]]['instance_id'] }}" }}'
+    - kubectl patch node '{{ patchvar[2] }}' -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_worker'][1]]['instance_id'] }}" }}'
+    # kubectl patch node {{ hostvars[groups['role_master'][0]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_master'][0]]['instance_id'] }}" }}'
+    # kubectl patch node {{ hostvars[groups['role_worker'][0]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_worker'][0]]['instance_id'] }}" }}'
+    # kubectl patch node {{ hostvars[groups['role_worker'][1]]['private_dns_name'] }} -p '{"spec":{"providerID":"aws:///us-east-1a/{{ hostvars[groups['role_worker'][1]]['instance_id'] }}" }}'
+        
   - name: Deploy AWS CSI Driver
     become: false
     shell: |

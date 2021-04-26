@@ -1,16 +1,22 @@
-- hosts: role_master
+- hosts: all
   tasks:
+  - name: debug hostnames
+    debug:
+      msg: "{{ hostvars[groups['role_master'][0]]['ansible_hostname'] }}"
+  - name: debug hostnames
+    debug:
+      msg: "{{ hostvars[inventory_hostname]['ansible_facts']['hostname'] }}"
 
-  - name: get gettext-base
-    apt:
-      package: gettext-base
-      state: present
+  # - name: get gettext-base
+  #   apt:
+  #     package: gettext-base
+  #     state: present
 
-  - name: change controlplane_endpoint and initialize the Kubernetes cluster using kubeadm
-    become: true
-    shell: |
-      export CONTROLPLANE_ENDPOINT={{ hostvars[inventory_hostname]['private_ip_address'] }}
-      envsubst < /home/ubuntu/clusterconfig-base.yml > /home/ubuntu/clusterconfig.yml
+  # - name: change controlplane_endpoint and initialize the Kubernetes cluster using kubeadm
+  #   become: true
+  #   shell: |
+  #     export CONTROLPLANE_ENDPOINT={{ hostvars[inventory_hostname]['private_ip_address'] }}
+  #     envsubst < /home/ubuntu/clusterconfig-base.yml > /home/ubuntu/clusterconfig.yml
 
 
   # - name: debug private dns names - master
