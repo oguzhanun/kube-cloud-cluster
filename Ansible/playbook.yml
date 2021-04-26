@@ -96,11 +96,8 @@
      - cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
      - chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
-  # - name: Install flannel pod network
-  #   shell: kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
-
-  - name: Install calico pod network
-    shell: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml  
+  - name: Install flannel pod network
+    shell: kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
 
   - name: Generate join command
     become: true
@@ -123,12 +120,6 @@
 
   - name: Join the node to cluster
     command: sh /tmp/join-command.sh
-
-  # - name: if cloud provider doesn't exist, put it into the file
-  #   lineinfile:
-  #     path: /var/lib/kubelet/kubeadm-flags.env
-  #     regexp: 'KUBELET_KUBEADM_ARGS'
-  #     line: KUBELET_KUBEADM_ARGS="--network-plugin=cni --cloud-provider=external --pod-infra-container-image=k8s.gcr.io/pause:3.4.1" # --provider-id=aws
 
   - name: Restart kubelet
     service:
@@ -159,8 +150,6 @@
       cd /home/ubuntu
       kubectl apply -f https://raw.githubusercontent.com/kubernetes/cloud-provider-aws/master/manifests/rbac.yaml
       kubectl apply -f https://raw.githubusercontent.com/kubernetes/cloud-provider-aws/master/manifests/aws-cloud-controller-manager-daemonset.yaml
-
-
 
 
 
@@ -203,3 +192,8 @@
   #     filename: kubernetes.list
 
 
+  # - name: if cloud provider doesn't exist, put it into the file
+  #   lineinfile:
+  #     path: /var/lib/kubelet/kubeadm-flags.env
+  #     regexp: 'KUBELET_KUBEADM_ARGS'
+  #     line: KUBELET_KUBEADM_ARGS="--network-plugin=cni --cloud-provider=external --pod-infra-container-image=k8s.gcr.io/pause:3.4.1" # --provider-id=aws
