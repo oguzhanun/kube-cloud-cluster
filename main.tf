@@ -9,24 +9,6 @@ module "iam" {
 
 resource "aws_security_group" "matt-kube-mutual-sg" {
   name = "kube-mutual-sec-group-for-matt"
-  
-  ingress {
-    protocol = "tcp"
-    from_port = 22
-    to_port = 22
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  
-  egress{
-    protocol = "-1"
-    from_port = 0
-    to_port = 0
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "kube-mutual-secgroup"
-  }
 }
 
 resource "aws_security_group" "matt-kube-worker-sg" {
@@ -48,13 +30,6 @@ resource "aws_security_group" "matt-kube-worker-sg" {
     protocol = "tcp"
     from_port = 22
     to_port = 22
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  
-  ingress {
-    protocol = "tcp"
-    from_port = 80
-    to_port = 80
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -98,7 +73,8 @@ resource "aws_security_group" "matt-kube-master-sg" {
     protocol = "tcp"
     from_port = 6443
     to_port = 6443
-    security_groups = [aws_security_group.matt-kube-mutual-sg.id]
+    cidr_blocks = ["0.0.0.0/0"]
+    #security_groups = [aws_security_group.matt-kube-mutual-sg.id]
   }
 
   ingress {
